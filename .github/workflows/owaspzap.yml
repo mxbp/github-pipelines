@@ -1,0 +1,29 @@
+---
+name: DEV - ZAP Proxy
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      - name: Download ZAP Proxy
+        run: curl -OL https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2_13_0_unix.sh
+      - name: Setup ZAP Proxy
+        run: sudo bash ZAP_2_13_0_unix.sh -q
+      - name: Run ZAP Proxy
+        run: zap.sh -daemon -host localhost -port 8082 -config api.key=1234567890 &
+      - name: Check
+        run: sleep 10 && curl -k -vvv http://localhost:8082
+...
