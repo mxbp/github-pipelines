@@ -10,14 +10,51 @@ on:
       inputs_url:
         required: false
         type: string
+      matrix_string:
+        required: false
+        type: string
 
 jobs:
   test_inputs:
     name: Environment ${{ inputs.inputs_environment || 'default' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.inputs_environment }}
+    strategy:
+      matrix:
+        test: ${{ inputs.matrix_string }}
     steps:
     - name: Echo Environment - ${{ inputs.inputs_environment || 'default' }}
       run: |
         echo "Environment - ${{ vars.STAGE }}"
+        echo "matrix_string - ${{ inputs.matrix_string }}"
+        echo "MATRIX - ${{ matrix.test }}"
+  convert:
+    runs-on: ubuntu-latest
+    name: Convert data
+    outputs:
+      CONVERT_INPUT: ${{ steps.convert.outputs.output }}
+    steps:
+      - name: Check and Convert
+        id: convert
+        run: |
+          input_value="${{ inputs.matrix_string }}"
+          formatted_value=$(echo "$input_value" | sed 's/\s\|\[\|\]\|\"//g' | sed 's/,/","/g')
+          matrix_entry="[\"$formatted_value\"]"
+          echo "Matrix entry: $matrix_entry"
+          echo "output=$matrix_entry" >> $GITHUB_OUTPUT
+      - name: Print Result
+        run: |
+          echo "Converted value: ${{ steps.convert.outputs.output }}"
+  test_matrix:
+    name: Test Matrix
+    runs-on: ubuntu-latest
+    needs: convert
+    strategy:
+      matrix:
+        test: ${{ needs.convert.outputs.CONVERT_INPUT }}
+        # version: [10, 12, 14]
+    steps:
+      - run: |
+          echo "Json - ${{ inputs.matrix_string }}"
+          echo "Matrix - ${{ matrix.test }}"
 ...

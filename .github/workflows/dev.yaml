@@ -16,13 +16,15 @@ jobs:
     uses: ./.github/workflows/reusable_workflow_environment.yml
     with:
       inputs_url: http://www.example.com/default
+      matrix_string: qwe
   test_2:
     name: Use reusable job - DEV
-    needs: test_1
+    # needs: test_1
     uses: ./.github/workflows/reusable_workflow_environment.yml
     with:
       inputs_environment: dev
       inputs_url: http://dev.example.com/dev
+      matrix_string: rty, fgh, vbn
   pr:
     name: PR
     runs-on: ubuntu-latest
@@ -55,6 +57,8 @@ jobs:
         format('--branch={0} --merge-id={1}', github.head_ref, github.event.number) ||
         format('--branch={0}', github.ref_name) }}"
         echo "- - - - ${{ github.event_name }} - - - -"
+    - name: Checkout
+      uses: actions/checkout@v3
     - name: Use composite actions
       uses: ./.github/workflows/actions.yml
 
