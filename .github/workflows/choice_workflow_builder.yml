@@ -1,0 +1,56 @@
+---
+name: Choice builder workflow
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        required: false
+        type: string
+      go_version:
+        required: false
+        type: string
+      build_command:
+        required: false
+        type: string
+
+jobs:
+  choice:
+    name: Choice workflow
+    runs-on: ubuntu-latest
+    outputs:
+      builder: ${{ steps.builder.outputs.test }}
+    steps:
+      - name: Choice - Debug Info
+        id: builder
+        run: |
+          echo "::group::Debug Info"
+          echo "node_version - ${{ inputs.node_version }}"
+          echo "go_version - ${{ inputs.go_version }}"
+          echo "build_command - ${{ inputs.build_command }}"
+          echo "- - - - - - - - - - - - - - - - - -"
+          echo "${{ toJSON(github.event.inputs) }}"
+          echo "- - - - - - - - - - - - - - - - - -"
+          echo "${{ tojson(inputs) }}"
+          echo "- - - - - - - - - - - - - - - - - -"
+          test=$(echo "${{ tojson(inputs) }}" | jq -Rc 'keys[]')
+          # test=$( echo ${{ tojson(inputs) }} | jq -c 'with_entries(select(.key | endswith("_version"))) | keys[]')
+          echo "$test"
+          echo "::endgroup::"
+          {
+            echo "test=${{ inputs.node_version != null && 'node' }}";
+            echo "test=${{ inputs.go_version != null && 'go' }}";
+          } >> "$GITHUB_OUTPUT"
+      # - name: Run ${{ steps.builder.outputs.test }}
+      #   uses: mxbp/github-pipelines/.github/workflows/node.yml@develop
+      #   with:
+      #     version: ${{ inputs.node_version }}
+      #     build_command: ${{ inputs.build_command }}
+      #   steps:
+      #     - id: step1
+      #       run: echo "test=hello" >> "$GITHUB_OUTPUT"
+
+      #       output1: ${{ steps.step1.outputs.test }}
+
+      # - name: Run build
+      #   uses:

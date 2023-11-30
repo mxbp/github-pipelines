@@ -1,0 +1,22 @@
+---
+name: NodeJS
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+      build_command:
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: Build NodeJS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.version }}
+...

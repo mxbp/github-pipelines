@@ -11,6 +11,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  test_choice_node:
+    name: Choice Node builder
+    uses: mxbp/github-pipelines/.github/workflows/node.yml@develop
+    with:
+      version: 18
+      build_command: npm run build
+  test_choice_go:
+    name: Choice Go builder
+    uses: ./.github/workflows/choice_workflow_builder.yml
+    with:
+      go_version: 1.21.4
   test_1:
     name: Use reusable job - default
     uses: ./.github/workflows/reusable_workflow_environment.yml

@@ -1,0 +1,22 @@
+---
+name: Go
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+      build_command:
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: Build Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.version }}
+...
