@@ -138,7 +138,7 @@ jobs:
           fail-build: true
           # severity-cutoff: high
       - name: Anchore - Upload scan SARIF report
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.docker-scan.outputs.sarif }}
       - name: Push

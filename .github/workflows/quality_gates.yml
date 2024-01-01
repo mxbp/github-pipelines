@@ -117,14 +117,14 @@ jobs:
           name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
       - name: Initialize
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
       - name: Autobuild
         if: matrix.language == 'cpp' || matrix.language == 'csharp'
-        uses: github/codeql-action/autobuild@v2
+        uses: github/codeql-action/autobuild@v3
       - name: Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
