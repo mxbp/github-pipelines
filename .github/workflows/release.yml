@@ -1,0 +1,81 @@
+---
+name: Auto create Tag/Release/PR and cleanup caches
+on:
+  workflow_call:
+jobs:
+  tag:
+    name: Create Tag
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged && github.event.repository.default_branch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set Git user name and email
+        run: |
+          git config --local user.name "GitHub Actions Bot"
+          git config --local user.email "github-actions-bot@github.com"
+      - name: Set Git tag
+        # TODO: README.md :: Settings > Actions > General > Workflow permissions > Read and write permissions
+        run: |
+          git tag --force --message="v${GITHUB_HEAD_REF##*/}" "v${GITHUB_HEAD_REF##*/}"
+          git push --force --tags
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: tag
+    if: github.event.pull_request.merged && github.event.repository.default_branch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "v${GITHUB_HEAD_REF##*/}" --cleanup-tag --yes ||
+            gh release create "v${GITHUB_HEAD_REF##*/}" --generate-notes
+  pr:
+    name: Create/merge PR to develop # TODO: Change name
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.event.pull_request.merged && github.event.repository.default_branch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create PR from '${{ github.ref_name }}' to 'develop' # TODO: Change name
+        env:
+          GH_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # GH_TOKEN: ${{ github.token }} # TODO: Remove
+        run: |
+          git fetch --unshallow
+          git checkout 'develop'
+          git pull
+          git merge \
+            --no-ff $GH_DEFAULT_BRANCH \
+            --message="Auto-merge branch '$GH_DEFAULT_BRANCH' into '${{ github.ref_name }}'"
+          git push
+        # gh pr create --base "develop" --title "Auto-merge PR to 'develop'" --body "Created by GitHub Actions" # TODO: Remove
+        # gh pr merge --auto --merge # TODO: Remove
+  cleanup:
+    name: Cleanup caches
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.event.pull_request.merged
+    steps:
+      - name: Cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO_NAME: ${{ github.repository }}
+          GH_BRANCH: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          gh extension install actions/gh-actions-cache
+
+          # Fetching list of cache key
+          GH_CACHE_KEYS=$(gh actions-cache list -R $GH_REPO_NAME -B $GH_BRANCH -L 100 | cut -f 1 )
+
+          ## Setting this to not fail the workflow while deleting cache keys.
+          set +e
+
+          # Deleting caches...
+          for GH_CACHE_KEY in $GH_CACHE_KEYS; do
+            gh actions-cache delete $GH_CACHE_KEY -R $GH_REPO_NAME -B $GH_BRANCH --confirm
+          done

@@ -1,0 +1,130 @@
+---
+name: Quality Gates
+on:
+  workflow_call:
+    inputs:
+      codeql_language:
+        required: false
+        type: string
+      sonar_project_key:
+        required: false
+        type: string
+        default: ${{ github.event.repository.name }}
+      timeout:
+        required: false
+        type: number
+        default: 60
+    secrets:
+      sonar_host_url:
+        required: false
+      sonar_token:
+        required: false
+jobs:
+  check_secrets:
+    name: Check Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout }}
+    outputs:
+      sonar_host_url: ${{ steps.gh-check-secrets.outputs.sonar_host_url }}
+      sonar_token: ${{ steps.gh-check-secrets.outputs.sonar_token }}
+    steps:
+      - name: Check Secrets
+        id: gh-check-secrets
+        env:
+          sonar_host_url: ${{ secrets.sonar_host_url }}
+          sonar_token: ${{ secrets.sonar_token }}
+        run: >
+          {
+            echo "sonar_host_url=${{ env.sonar_host_url != null }}";
+            echo "sonar_token=${{ env.sonar_token != null }}";
+          } >> "$GITHUB_OUTPUT"
+  linter:
+    name: MegaLinter
+    runs-on: ubuntu-latest
+    needs: check_secrets
+    continue-on-error: true
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: ${{ github.event_name == 'push' && 1 || 0 }}
+      - name: Analysis
+        uses: oxsecurity/megalinter@v7
+        env:
+          VALIDATE_ALL_CODEBASE: ${{ contains(github.event_name, 'push') }}
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Archive production artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: MegaLinter
+          path: |
+            megalinter-reports-${{ github.run_number }}
+            mega-linter-${{ github.run_number }}.log
+  sonarqube:
+    name: Sonarqube
+    runs-on: ubuntu-latest
+    needs: check_secrets
+    if: >
+      needs.check_secrets.outputs.sonar_host_url == 'true' &&
+      needs.check_secrets.outputs.sonar_token == 'true'
+    permissions:
+      pull-requests: write
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: app-source-${{ github.run_number }}
+          path: ${{ github.workspace }}
+      - name: Analysis
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          sonar_host_url: ${{ secrets.sonar_host_url }}
+          sonar_token: ${{ secrets.sonar_token }}
+        with:
+          args: -D sonar.projectKey=${{ inputs.sonar_project_key }}
+      - name: Analysis Check
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 15
+        env:
+          sonar_host_url: ${{ secrets.sonar_host_url }}
+          sonar_token: ${{ secrets.sonar_token }}
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    if: inputs.codeql_language != null
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: Add auto detect language
+        # https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repository-languages
+        language: ${{ fromJson(inputs.codeql_language) }}
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - name: Download source artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: app-source-${{ github.run_number }}
+          path: ${{ github.workspace }}
+      - name: Initialize
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+      - name: Autobuild
+        if: matrix.language == 'cpp' || matrix.language == 'csharp'
+        uses: github/codeql-action/autobuild@v2
+      - name: Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{ matrix.language }}"

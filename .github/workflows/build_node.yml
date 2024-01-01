@@ -1,0 +1,130 @@
+---
+name: NodeJS
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      install_command:
+        required: false
+        type: string
+        default: if [ -e package-lock.json ]; then npm ci; else npm install; fi
+      build_command:
+        required: false
+        type: string
+        default: npm run build --if-present
+      test_command:
+        required: false
+        type: string
+        default: npm test --if-present
+      publish_command:
+        required: false
+        type: string
+        default: npm publish --if-present
+      registry_url:
+        required: false
+        type: string
+        default: https://registry.npmjs.org
+      build_dir:
+        required: false
+        type: string
+        default: build
+      aws_region:
+        required: false
+        type: string
+        default: us-east-1
+      aws_s3_bucket:
+        required: false
+        type: string
+      aws_role_arn:
+        required: false
+        type: string
+      timeout:
+        required: false
+        type: number
+        default: 60
+    secrets:
+      node_auth_token:
+        required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
+        required: false
+permissions:
+  contents: read # required - dependency-review-action
+jobs:
+  build:
+    name: NodeJS
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout }}
+    env:
+      ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.version }}-${{ github.run_number }}
+      SBOM_FILE: ${{ github.event.repository.name }}-sbom-${{ github.run_number }}.spdx.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v3
+        # with:
+        #   fail-on-severity: high
+      - name: Create SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          output-file: ${env.SBOM_FILE}
+      - name: Scan SBOM
+        uses: anchore/scan-action@v3
+        with:
+          sbom: ${env.SBOM_FILE}
+          fail-build: true
+          # severity-cutoff: high
+      - name: Setup Node ${{ inputs.version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.version }}
+          cache: ${{ startsWith(inputs.install_command, 'npm') && 'npm' || 'yarn' }}
+          registry-url: ${{ inputs.registry_url }}
+      - name: Install dependencies
+        run: ${{ inputs.install_command }}
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Test
+        run: ${{ inputs.test_command }}
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.node_auth_token }}
+        if: env.NODE_AUTH_TOKEN != null
+        run: ${{ inputs.publish_command }}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-build-${{ github.run_number }}
+          path: ${{ inputs.build_dir }}
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-source-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}
+            !node_modules
+      - name: Compress source
+        if: inputs.aws_s3_bucket != null
+        run: >
+          tar -acvf ${{ github.workspace }}/${env.ARTIFACT_NAME}.tgz \
+          ${{ inputs.build_dir }}
+      - name: Configure AWS Credentials
+        if: github.event_name != 'pull_request' && inputs.aws_s3_bucket != null
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+          role-to-assume: ${{ inputs.aws_role_arn }}
+      - name: Copy files to the AWS S3
+        if: github.event_name != 'pull_request' && inputs.aws_s3_bucket != null
+        run: aws s3 cp ${env.ARTIFACT_NAME}.tgz s3://${{ inputs.aws_s3_bucket }}/
+  quality_gates:
+    uses: mxbp/github-piplines/.github/workflows/quality_gates.yml@main
+    secrets: inherit
