@@ -68,7 +68,7 @@ jobs:
           echo "Description - $response"
           echo "::endgroup::"
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
       - name: Setup Docker Context for Buildx
         run: docker context create ${{ github.event.repository.name }}
       - name: Setup Docker Buildx
