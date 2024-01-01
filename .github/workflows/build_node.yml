@@ -44,6 +44,15 @@ on:
         required: false
         type: number
         default: 60
+      env_github:
+        required: false
+        type: string
+      env_env:
+        required: false
+        type: string
+      env_vars:
+        required: false
+        type: string
     secrets:
       node_auth_token:
         required: false
@@ -51,40 +60,56 @@ on:
         required: false
       aws_secret_access_key:
         required: false
-permissions:
-  contents: read # required - dependency-review-action
 jobs:
   build:
     name: NodeJS
     runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'workflow_dispatch' &&
+      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/'))
     timeout-minutes: ${{ inputs.timeout }}
+    permissions:
+      contents: write # required - git push
     env:
       ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.version }}-${{ github.run_number }}
-      SBOM_FILE: ${{ github.event.repository.name }}-sbom-${{ github.run_number }}.spdx.json
     steps:
+      # TODO: Remove
+      - name: Debug Info
+        run: |
+          echo "environment=production" >> .gh-env
+          echo "sandbox_environment     - $sandbox_environment    ${{ env.sandbox_environment }}"
+          echo "develop_environment     - $develop_environment    ${{ env.develop_environment }}"
+          echo "test_environment        - $test_environment       ${{ env.test_environment }}"
+          echo "stage_environment       - $stage_environment      ${{ env.stage_environment }}"
+          echo "production_environment  - $production_environment ${{ env.production_environment }}"
+          echo "github                  - ${{ toJson(inputs.env_github) }}"
+          echo "env                     - ${{ toJson(inputs.env_env) }}"
+          echo "vars                    - ${{ toJson(inputs.env_vars) }}"
+
+          while read line; do
+            printf "%s\n" $line >> $GITHUB_ENV
+          done < .gh-env
+
+        # for line in "$(cat .gh-env)"; do
+        #   printf "%s\n" $line >> $GITHUB_ENV
+        # done
+      - name: Debug Info ENV
+        run: |
+          echo "env - ${{ env.environment }} $environment"
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Dependency Review
+        if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v3
         # with:
-        #   fail-on-severity: high
-      - name: Create SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          output-file: ${env.SBOM_FILE}
-      - name: Scan SBOM
-        uses: anchore/scan-action@v3
-        with:
-          sbom: ${env.SBOM_FILE}
-          fail-build: true
-          # severity-cutoff: high
+        #   fail-on-severity: medium
       - name: Setup Node ${{ inputs.version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.version }}
-          cache: ${{ startsWith(inputs.install_command, 'npm') && 'npm' || 'yarn' }}
+          cache: ${{ contains(inputs.install_command, 'yarn') && 'yarn' || 'npm' }}
           registry-url: ${{ inputs.registry_url }}
       - name: Install dependencies
         run: ${{ inputs.install_command }}
@@ -92,10 +117,25 @@ jobs:
         run: ${{ inputs.build_command }}
       - name: Test
         run: ${{ inputs.test_command }}
+      - name: Bump version
+        if: startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')
+        run: |
+          #!/bin/bash
+
+          GH_APP_VERSION=$(node -p "require('./package.json').version")
+
+          if [ "$GH_APP_VERSION" != "${GITHUB_REF_NAME##*/}" ]; then
+            git config --local user.name "GitHub Actions Bot"
+            git config --local user.email "github-actions-bot@github.com"
+            npm version "${GITHUB_REF_NAME##*/}" \
+              --allow-same-version \
+              --message "chore: bump version to %s"
+            git push
+          fi
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.node_auth_token }}
-        if: env.NODE_AUTH_TOKEN != null
+        if: github.event_name != 'pull_request' && env.NODE_AUTH_TOKEN != null
         run: ${{ inputs.publish_command }}
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
@@ -126,5 +166,8 @@ jobs:
         if: github.event_name != 'pull_request' && inputs.aws_s3_bucket != null
         run: aws s3 cp ${env.ARTIFACT_NAME}.tgz s3://${{ inputs.aws_s3_bucket }}/
   quality_gates:
-    uses: mxbp/github-piplines/.github/workflows/quality_gates.yml@main
+    name: Quality Gates
+    needs: build
+    if: ${{ !failure() }} && ${{ !cancelled() }}
+    uses: mxbp/github-pipelines/.github/workflows/quality_gates.yml@main
     secrets: inherit

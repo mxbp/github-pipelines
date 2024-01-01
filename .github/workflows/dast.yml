@@ -1,0 +1,82 @@
+---
+name: DAST
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        required: true
+        type: string
+      zap_rules_file_name:
+        required: false
+        type: string
+      timeout:
+        required: false
+        type: number
+        default: 60
+jobs:
+  owasp_zap:
+    name: OWASP ZAP
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        if: inputs.zap_rules_file_name != null
+        with:
+          fetch-depth: 0
+      - name: Create OWASP ZAP config
+        if: inputs.zap_rules_file_name == null
+        run: |
+          cat > owasp_zap.tsv << EOF
+          # zap-full-scan rule configuration file
+          41    FAIL    (Source Code Disclosure - Git - Active/beta)
+          10010 FAIL    (Cookie No HttpOnly Flag - Passive/release)
+          10011 FAIL    (Cookie Without Secure Flag - Passive/release)
+          10016 FAIL    (Web Browser XSS Protection Not Enabled)
+          10020 FAIL    (Anti-clickjacking Header - Passive/release)
+          10024 FAIL    (Information Disclosure - Sensitive Information in URL - Passive/release)
+          10025 FAIL    (Information Disclosure - Sensitive Information in HTTP Referrer Header - Passive/release)
+          10028 FAIL    (Open Redirect - Passive/release)
+          10035 FAIL    (Strict-Transport-Security Header - Passive/release)
+          10038 FAIL    (Content Security Policy (CSP) Header Not Set - Passive/release)
+          10040 FAIL    (Secure Pages Include Mixed Content - Passive/release)
+          10043 FAIL    (User Controllable JavaScript Event (XSS) - Passive/release)
+          10048 FAIL    (Remote Code Execution - Shell Shock - Active/beta)
+          10058 FAIL    (GET for POST - Active/release)
+          10062 FAIL    (PII Disclosure - Passive/release)
+          10095 IGNORE  (Backup File Disclosure - Active/beta)
+          10106 IGNORE  (HTTP Only Site - Active/beta)
+          10202 FAIL    (Absence of Anti-CSRF Tokens - Passive/release)
+          20012 FAIL    (Anti-CSRF Tokens Check - Active/beta)
+          20017 FAIL    (Source Code Disclosure - CVE-2012-1823 - Active/release)
+          20018 FAIL    (Remote Code Execution - CVE-2012-1823 - Active/release)
+          40012 FAIL    (Cross Site Scripting (Reflected) - Active/release)
+          40013 FAIL    (Session Fixation - Active/beta)
+          40014 FAIL    (Cross Site Scripting (Persistent) - Active/release)
+          40016 FAIL    (Cross Site Scripting (Persistent) - Prime - Active/release)
+          40017 FAIL    (Cross Site Scripting (Persistent) - Spider - Active/release)
+          40018 FAIL    (SQL Injection - Active/release)
+          40019 FAIL    (SQL Injection - MySQL - Active/release)
+          40020 FAIL    (SQL Injection - Hypersonic SQL - Active/release)
+          40021 FAIL    (SQL Injection - Oracle - Active/release)
+          40022 FAIL    (SQL Injection - PostgreSQL - Active/release)
+          40023 FAIL    (Possible Username Enumeration - Active/beta)
+          40024 FAIL    (SQL Injection - SQLite - Active/release)
+          40025 FAIL    (Proxy Disclosure - Active/beta)
+          40026 FAIL    (Cross Site Scripting (DOM Based) - Active/release)
+          40027 FAIL    (SQL Injection - MsSQL - Active/release)
+          40032 FAIL    (.htaccess Information Leak - Active/release)
+          40034 FAIL    (.env Information Leak - Active/release)
+          40035 FAIL    (Hidden File Finder - Active/release)
+          90020 FAIL    (Remote OS Command Injection - Active/release)
+          90027 IGNORE  (Cookie Slack Detector - Active/beta)
+          EOF
+      - name: Analysis
+        uses: zaproxy/action-full-scan@v0.6.0
+        with:
+          target: ${{ inputs.target_url }}
+          rules_file_name: ${{ inputs.zap_rules_file_name == null && 'owasp_zap.tsv' || inputs.zap_rules_file_name }}
+          cmd_options: -a
+          fail_action: false
