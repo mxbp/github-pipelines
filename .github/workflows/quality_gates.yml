@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: ${{ github.event_name == 'push' && 1 || 0 }}
       - name: Analysis
