@@ -1,0 +1,24 @@
+---
+name: CodeQL
+description: |
+  CodeQL is the analysis engine used by developers to automate security checks, and by security researchers to perform
+  variant analysis
+inputs:
+  language:
+    description: Language
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: Initialize
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ inputs.language }}
+        queries: security-extended,security-and-quality
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+    - name: Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{ inputs.language }}"
+    # TODO: Add label feature for QG

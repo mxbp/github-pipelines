@@ -1,0 +1,39 @@
+---
+name: Checking secrets
+description: Checking secrets
+inputs:
+  sonar_token:
+    description: SonarQube Token
+    required: false
+  aws_access_key_id:
+    description: AWS Access Key ID
+    required: false
+  aws_secret_access_key:
+    description: AWS Secret Access Key
+    required: false
+outputs:
+  sonar_token:
+    description: Check SonarQube secrets
+    value: ${{ steps.check-secrets.outputs.sonar_token }}
+  aws_access_key_id:
+    description: Check AWS access key ID
+    value: ${{ steps.check-secrets.outputs.aws_access_key_id }}
+  aws_secret_access_key:
+    description: Check AWS secret access key
+    value: ${{ steps.check-secrets.outputs.aws_secret_access_key }}
+runs:
+  using: composite
+  steps:
+    - name: Checking Secrets
+      id: check-secrets
+      env:
+        GH_INPUT_SONAR_TOKEN: ${{ inputs.sonar_token != null }}
+        GH_INPUT_AWS_ACCESS_KEY_ID: ${{ inputs.aws_access_key_id != null }}
+        GH_INPUT_AWS_SECRET_ACCESS_KEY: ${{ inputs.aws_secret_access_key != null }}
+      shell: bash
+      run: >
+        {
+          echo "sonar_token=$GH_INPUT_SONAR_TOKEN"
+          echo "aws_access_key_id=$GH_INPUT_AWS_ACCESS_KEY_ID"
+          echo "aws_secret_access_key=$GH_INPUT_AWS_SECRET_ACCESS_KEY"
+        } >> "$GITHUB_OUTPUT"

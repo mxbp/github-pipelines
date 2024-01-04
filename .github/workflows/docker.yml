@@ -3,26 +3,28 @@ name: Docker
 on:
   workflow_call:
     inputs:
-      build_dir:
-        required: false
-        default: build
-        type: string
+      # build_dir:
+      #   required: false
+      #   default: build
+      #   type: string
+      # NOTE: Docker
       dockerfile_path:
         required: false
         type: string
-        default: ./
+        default: .
       dockerfile_name:
         required: false
         type: string
         default: Dockerfile
-      registry:
+      docker_registry:
         required: false
         type: string
-        default: ghcr.io
-      repository:
+        # default: ghcr.io
+      docker_repository:
         required: false
         type: string
-        default: ${{ github.repository }}
+        # default: ${{ github.repository }}
+      # NOTE: AWS
       aws_region:
         required: false
         type: string
@@ -30,41 +32,52 @@ on:
       aws_role_arn:
         required: false
         type: string
+      aws_access_key_id:
+        required: false
+        type: string
+      aws_secret_access_key:
+        required: false
+        type: string
+      # NOTE: GitHub Actions
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
       timeout:
         required: false
         type: number
         default: 60
     secrets:
-      username:
+      docker_username:
         required: false
-      password:
+      docker_password:
         required: false
       aws_access_key_id:
         required: false
       aws_secret_access_key:
         required: false
+    outputs:
+      image_name:
+        description: Docker Image
+        value: ${{ jobs.build_push.outputs.image_name }}
 jobs:
   build_push:
-    name: ${{ github.event_name == 'pull_request' && 'Build' || 'Build → Push' }}
-    runs-on: ubuntu-latest
-    if: >
-      github.event_name != 'workflow_dispatch' &&
-      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/'))
+    name: Docker Build ${{ github.event_name == 'pull_request' || '→ Push' }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout }}
     permissions:
       actions: read # required - for a private repository by github/codeql-action/upload-sarif to get the Action run status
       contents: write # required - anchore/sbom-action
       packages: write
       security-events: write # required - github/codeql-action/upload-sarif to upload SARIF results
       issues: write
-    timeout-minutes: ${{ inputs.timeout }}
     outputs:
-      image_name: ${{ steps.docker-meta.outputs.tags }}
+      image_name: ${{ steps.meta.outputs.tags }}
     steps:
-      - name: Download build artifact
+      - name: Download source artifact
         uses: actions/download-artifact@v3
         with:
-          name: app-build-${{ github.run_number }}
-          # name: app-source-${{ github.run_number }}
+          name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -74,16 +87,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           endpoint: ${{ github.event.repository.name }}
-      - name: Check Secrets
-        id: gh-check-secrets
-        env:
-          aws_access_key_id: ${{ secrets.aws_access_key_id }}
-          aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
-        run: >
-          {
-            echo "aws_access_key_id=${{ env.aws_access_key_id != null }}";
-            echo "aws_secret_access_key=${{ env.aws_secret_access_key != null }}";
-          } >> "$GITHUB_OUTPUT"
       - name: Configure AWS credentials
         id: aws-config
         if: github.event_name != 'pull_request' && inputs.aws_role_arn != null
@@ -95,55 +98,58 @@ jobs:
         id: aws-login
         if: steps.aws-config.outcome == 'success'
         uses: aws-actions/amazon-ecr-login@v2
+      # FIXME: Remove
+      - name: Debug Info
+        run: |
+          echo "steps.aws-login.outputs.registry  - ${{ steps.aws-login.outputs.registry }}"
+          echo "inputs.docker_registry            - ${{ inputs.docker_registry }}"
+          echo "steps.aws-login.outputs.registry  - ${{ steps.aws-login.outputs.registry }}"
+          echo "inputs.docker_repository          - ${{ inputs.docker_repository }}"
+          echo "steps.aws-config.outcome          - ${{ steps.aws-config.outcome }}"
+          echo "github.repository                 - ${{ github.repository }}"
       - name: Get docker meta
-        id: docker-meta
+        id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ steps.aws-login.outputs.registry == null && inputs.registry || steps.aws-login.outputs.registry }}/${{ inputs.repository }}
+          images: >
+            ${{ steps.aws-login.outputs.registry == null && inputs.docker_registry ||
+                steps.aws-login.outputs.registry }}/${{ inputs.docker_repository }}
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.event.after }}
           tags: |
             type=ref,event=branch,suffix=-${{ github.run_number }}
             type=ref,event=pr,suffix=-${{ github.run_number }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-          labels: |
-            org.opencontainers.image.title=${{ github.event.repository.name }}
-            org.opencontainers.image.description=${{ github.event.repository.description }}
-      - name: Login to ${{ inputs.registry }} container registry
+      - name: Login to ${{ inputs.docker_registry }} container registry
         if: github.event_name != 'pull_request' && steps.aws-config.outcome == 'skipped'
         uses: docker/login-action@v3
         with:
-          registry: ${{ inputs.registry }}
+          registry: ${{ inputs.docker_registry }}
           username: >
-            ${{ steps.gh-check-secrets.outputs.aws_access_key_id == 'true' && secrets.aws_access_key_id ||
-              (secrets.username == null && github.actor || secrets.username) }}
+            ${{ inputs.aws_access_key_id == 'true' && secrets.aws_access_key_id ||
+                (secrets.docker_username == null && github.actor || secrets.docker_username) }}
           password: >
-            ${{ steps.gh-check-secrets.outputs.aws_secret_access_key == 'true' && secrets.aws_secret_access_key ||
-              (secrets.password == null && github.token || secrets.password) }}
+            ${{ inputs.aws_secret_access_key == 'true' && secrets.aws_secret_access_key ||
+                (secrets.docker_password == null && github.token || secrets.docker_password) }}
       - name: Build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ inputs.dockerfile_path }}/${{ inputs.dockerfile_name }}
           load: true
-          tags: ${{ steps.docker-meta.outputs.tags }}
-          labels: ${{ steps.docker-meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          # sbom: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Anchore scan
-        uses: mxbp/github-pipelines/quality-gates-anchore@main
+        uses: mxbp/github-pipelines/actions/quality-gates-anchore@main
         with:
-          image: ${{ steps.docker-meta.outputs.tags }}
-      # - name: Anchore - Grype scan image
-      #   id: docker-scan
-      #   uses: anchore/scan-action@v3
-      #   with:
-      #     image: ${{ steps.docker-meta.outputs.tags }}
-      #     fail-build: false
-      #     # severity-cutoff: medium
-      # - name: Anchore - Upload SBOM scan SARIF report
-      #   if: always()
-      #   uses: github/codeql-action/upload-sarif@v3
-      #   with:
-      #     sarif_file: ${{ steps.docker-scan.outputs.sarif }}
+          image: ${{ steps.meta.outputs.tags }}
       - name: Push
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v5
@@ -151,6 +157,17 @@ jobs:
           context: .
           file: ${{ inputs.dockerfile_path }}/${{ inputs.dockerfile_name }}
           push: true
-          tags: ${{ steps.docker-meta.outputs.tags }}
-          labels: ${{ steps.docker-meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          # sbom: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Cleanup old packages
+        uses: actions/delete-package-versions@v4
+        with: 
+          package-name: ${{ github.event.repository.name }}
+          package-type: container
+          min-versions-to-keep: 10
+          delete-only-pre-release-versions: true
+          ignore-versions: '^[\d]+\.[\d]+\.[\d]+$'

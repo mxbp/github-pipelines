@@ -1,0 +1,34 @@
+---
+name: SonarQube
+description: |
+  Sonar’s static application security testing (SAST) engine detects security vulnerabilities in your code so they can
+  be eliminated before you build and test your application. Achieve robust application security and compliance for
+  complex projects with SAST. 
+inputs:
+  sonar_host_url:
+    description: SonarQube Host
+    required: true
+  sonar_token:
+    description: SonarQube Token
+    required: true
+  sonar_project_key:
+    description: SonarQube Project key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Analysis
+      uses: sonarsource/sonarqube-scan-action@v2
+      env:
+        SONAR_HOST_URL: ${{ inputs.sonar_host_url }}
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+      with:
+        args: >
+          -D sonar.projectKey=${{ inputs.sonar_project_key }}
+          -D sonar.qualitygate.wait=true
+    # - name: Analysis Check
+    #   uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+    #   env:
+    #     sonar_host_url: ${{ vars.sonar_host_url }}
+    #     sonar_token: ${{ secrets.sonar_token }}
+    # TODO: Add label feature for QG

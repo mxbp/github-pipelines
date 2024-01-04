@@ -1,0 +1,23 @@
+---
+name: Checking file
+description: Checking files
+inputs:
+  file_path:
+    description: File path
+    required: true
+outputs:
+  status:
+    description: File status
+    value: ${{ steps.check-file.outputs.status }}
+runs:
+  using: composite
+  steps:
+    - name: Checking files
+      id: check-file
+      env:
+        GH_INPUT_FILE: ${{ hashFiles(inputs.file_path) != null }}
+      shell: bash
+      run: >
+        {
+          echo "status=$GH_INPUT_FILE"
+        } >> "$GITHUB_OUTPUT"

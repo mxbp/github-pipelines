@@ -9,6 +9,11 @@ on:
       zap_rules_file_name:
         required: false
         type: string
+      # NOTE: GitHub Actions
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
       timeout:
         required: false
         type: number
@@ -16,18 +21,18 @@ on:
 jobs:
   owasp_zap:
     name: OWASP ZAP
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout }}
     permissions:
       issues: write
-    timeout-minutes: ${{ inputs.timeout }}
     steps:
       - name: Checkout code
+        if: ${{ inputs.zap_rules_file_name != null }}
         uses: actions/checkout@v3
-        if: inputs.zap_rules_file_name != null
         with:
           fetch-depth: 0
       - name: Create OWASP ZAP config
-        if: inputs.zap_rules_file_name == null
+        if: ${{ inputs.zap_rules_file_name == null }}
         run: |
           cat > owasp_zap.tsv << EOF
           # zap-full-scan rule configuration file

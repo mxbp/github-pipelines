@@ -1,0 +1,333 @@
+---
+name: NodeJS
+on:
+  workflow_call:
+    inputs:
+      # NOTE: NodeJS
+      node_version:
+        required: true
+        type: string
+      install_command:
+        required: false
+        type: string
+        default: if [ -e package-lock.json ]; then npm ci; else npm install; fi
+      build_command:
+        required: false
+        type: string
+        default: npm run build --if-present
+      test_command:
+        required: false
+        type: string
+        default: npm test --if-present
+      publish_command:
+        required: false
+        type: string
+        # default: npm publish
+      npm_registry:
+        required: false
+        type: string
+        default: https://npm.pkg.github.com
+      build_dir:
+        required: false
+        type: string
+        default: build
+      # NOTE: Docker
+      dockerfile_path:
+        required: false
+        type: string
+        default: .
+      dockerfile_name:
+        required: false
+        type: string
+        default: Dockerfile
+      docker_registry:
+        required: false
+        type: string
+        default: ${{ vars.docker_registry || 'ghcr.io' }}
+      docker_repository:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+      # NOTE: Quality Gates
+      sonar_host_url:
+        required: false
+        type: string
+        default: ${{ vars.sonar_host_url }}
+      sonar_project_key:
+        required: false
+        type: string
+        default: ${{ github.event.repository.name }}
+      codeql_language:
+        required: false
+        type: string
+      # NOTE: AWS
+      aws_region:
+        required: false
+        type: string
+        default: us-east-1
+      aws_s3_bucket:
+        required: false
+        type: string
+      aws_role_arn:
+        required: false
+        type: string
+      # NOTE: Environment
+      environment:
+        required: false
+        type: string
+      sandbox_environment:
+        required: false
+        type: string
+        default: sandbox # FIXME: Actualize the name of the environment with your workflow
+      develop_environment:
+        required: false
+        type: string
+        default: develop # FIXME: Actualize the name of the environment with your workflow
+      test_environment:
+        required: false
+        type: string
+        default: quality_assurance # FIXME: Actualize the name of the environment with your workflow
+      stage_environment:
+        required: false
+        type: string
+        default: user_acceptance_testing # FIXME: Actualize the name of the environment with your workflow
+      production_environment:
+        required: false
+        type: string
+        default: production
+      # NOTE: OWASP ZAP
+      zap_rules_file_name:
+        required: false
+        type: string
+      # NOTE: GitHub Actions
+      runs-on:
+        required: false
+        type: string
+        default: ubuntu-latest
+      timeout:
+        required: false
+        type: number
+        default: 60
+    secrets:
+      node_auth_token:
+        required: false
+      sonar_token:
+        required: false
+      docker_username:
+        required: false
+      docker_password:
+        required: false
+      aws_access_key_id:
+        required: false
+      aws_secret_access_key:
+        required: false
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout }}
+    environment: ${{ inputs.environment }}
+    outputs:
+      environment: ${{ steps.check-environment.outputs.environment }}
+      sonar_token: ${{ steps.check-secrets.outputs.sonar_token }}
+      aws_access_key_id: ${{ steps.check-secrets.outputs.aws_access_key_id }}
+      aws_secret_access_key: ${{ steps.check-secrets.outputs.aws_secret_access_key }}
+      dockerfile: ${{ steps.check-dockerfile.outputs.status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Checking Environment
+        id: check-environment
+        uses: mxbp/github-pipelines/actions/check-environment@main
+        with:
+          environment: ${{ inputs.environment == '' && '' || inputs.environment }}
+          sandbox_environment: ${{ inputs.sandbox_environment }}
+          develop_environment: ${{ inputs.develop_environment }}
+          test_environment: ${{ inputs.test_environment }}
+          stage_environment: ${{ inputs.stage_environment }}
+          production_environment: ${{ inputs.production_environment }}
+      - name: Checking Secrets
+        id: check-secrets
+        uses: mxbp/github-pipelines/actions/check-secrets@main
+        with:
+          sonar_token: ${{ secrets.sonar_token }}
+          aws_access_key_id: ${{ secrets.aws_access_key_id }}
+          aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
+      - name: Checking Dockerfile
+        id: check-dockerfile
+        uses: mxbp/github-pipelines/actions/check-file@main
+        with:
+          file_path: ${{ inputs.dockerfile_path }}/${{ inputs.dockerfile_name }}
+  build:
+    name: Build
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout }}
+    needs:
+      - prepare
+    if: ${{ github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
+      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    permissions:
+      contents: write
+    # FIXME: incorrect ARTIFACT_NAME
+    env:
+      ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.node_version }}-${{ github.run_number }}
+    steps:
+      - name: Debug Info
+        run: |
+          echo "inputs.aws_role_arn                         - ${{ inputs.aws_role_arn }}"
+          echo "needs.prepare.outputs.environment           - ${{ needs.prepare.outputs.environment }}"
+          echo "needs.prepare.outputs.sonar_token           - ${{ needs.prepare.outputs.sonar_token }}"
+          echo "needs.prepare.outputs.dockerfile            - ${{ needs.prepare.outputs.dockerfile }}"
+          echo "needs.prepare.outputs.aws_access_key_id     - ${{ needs.prepare.outputs.aws_access_key_id }}"
+          echo "needs.prepare.outputs.aws_secret_access_key - ${{ needs.prepare.outputs.aws_secret_access_key }}"
+          echo "inputs.docker_registry                      - ${{ inputs.docker_registry }}"
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Dependency Review
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/dependency-review-action@v3
+        # with:
+        #   fail-on-severity: medium
+      - name: Setup Node ${{ inputs.node_version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ contains(inputs.install_command, 'yarn') && 'yarn' || 'npm' }}
+          registry-url: ${{ inputs.npm_registry }}
+      - name: Install dependencies
+        run: ${{ inputs.install_command }}
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Test
+        run: ${{ inputs.test_command }}
+      - name: Bump version
+        if: ${{ startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/') }}
+        run: |
+          #!/bin/bash
+          # TODO: Add workspace env for ./package.json
+          GH_APP_VERSION=$(node -p "require('./package.json').version")
+
+          if [ "$GH_APP_VERSION" != "${GITHUB_REF_NAME##*/}" ]; then
+            git config --local user.name "GitHub Actions Bot"
+            git config --local user.email "github-actions-bot@github.com"
+            npm version "${GITHUB_REF_NAME##*/}" \
+              --allow-same-version \
+              --message "chore: bump version to %s"
+            git push
+          fi
+      - name: Publish
+        # README: NODE_AUTH_TOKEN
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.node_auth_token != null && secrets.node_auth_token || github.token }}
+        if: ${{ github.event_name != 'pull_request' && inputs.publish_command != null }}
+        run: ${{ inputs.publish_command }}
+      # - name: Upload build artifact
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: app-build-${{ github.run_number }}
+      #     path: ${{ inputs.build_dir }}
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-source-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}
+            !node_modules
+      # TODO: Add download ZIP artifact
+      - name: Compress source
+        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
+             (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+        run: >
+          tar -acvf ${{ github.workspace }}/${env.ARTIFACT_NAME}.tgz \
+          ${{ inputs.build_dir }}
+      - name: Configure AWS Credentials
+        id: aws-config
+        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
+             (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+          role-to-assume: ${{ inputs.aws_role_arn }}
+      - name: Copy files to the AWS S3
+        if: ${{ github.event_name != 'pull_request' && steps.aws-config.outcome == 'success' }}
+        run: aws s3 cp ${env.ARTIFACT_NAME}.tgz s3://${{ inputs.aws_s3_bucket }}/
+  quality_gates:
+    name: Quality Gates
+    needs:
+      - prepare
+      - build
+    if: ${{ !failure() && !cancelled() &&
+      github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
+      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    uses: mxbp/github-pipelines/.github/workflows/quality_gates.yml@main
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      timeout: ${{ inputs.timeout }}
+      sonar_token: ${{ needs.prepare.outputs.sonar_token }}
+      sonar_host_url: ${{ inputs.sonar_host_url }}
+      sonar_project_key: ${{ inputs.sonar_project_key }}
+      codeql_language: ${{ inputs.codeql_language }}
+    secrets: inherit
+  docker:
+    name: Docker
+    needs:
+      - prepare
+      - build
+      - quality_gates
+    if: ${{ github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
+         (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    uses: mxbp/github-pipelines/.github/workflows/docker.yml@main
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      timeout: ${{ inputs.timeout }}
+      dockerfile_path: ${{ inputs.dockerfile_path }}
+      dockerfile_name: ${{ inputs.dockerfile_name }}
+      docker_registry: ${{ inputs.docker_registry }}
+      docker_repository: ${{ inputs.docker_repository }}
+      aws_access_key_id: ${{ needs.prepare.outputs.aws_access_key_id }}
+      aws_secret_access_key: ${{ needs.prepare.outputs.aws_secret_access_key }}
+      aws_role_arn: ${{ inputs.aws_role_arn }}
+    secrets: inherit
+  deploy:
+    name: Deploy
+    needs:
+      - prepare
+      # - build
+      # - quality_gates
+      - docker
+    # runs-on: ${{ inputs.runs-on }}
+    # environment: ${{ needs.prepare.outputs.environment }}
+    # timeout-minutes: ${{ inputs.timeout }}
+    if: ${{ !failure() && !cancelled() }}
+    # steps:
+    uses: mxbp/github-pipelines/.github/workflows/deploy_aws_apprunner.yml@main
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      timeout: ${{ inputs.timeout }}
+      docker_image_name: ${{ needs.docker.outputs.image_name }}
+      environment: ${{ needs.prepare.outputs.environment }}
+      test_environment: ${{ inputs.test_environment }}
+      stage_environment: ${{ inputs.stage_environment }}
+      aws_access_key_id: ${{ needs.prepare.outputs.aws_access_key_id }}
+      aws_secret_access_key: ${{ needs.prepare.outputs.aws_secret_access_key }}
+      aws_role_arn: ${{ inputs.aws_role_arn }}
+    secrets: inherit
+  dast:
+    name: DAST
+    needs:
+      - deploy
+    if: ${{ needs.deploy.outputs.web_app_url != null }}
+    permissions:
+      issues: write
+    uses: mxbp/github-pipelines/.github/workflows/dast.yml@main
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      timeout: ${{ inputs.timeout }}
+      target_url: ${{ needs.deploy.outputs.web_app_url }}
+      zap_rules_file_name: ${{ inputs.zap_rules_file_name }}
