@@ -62,7 +62,7 @@ on:
         value: ${{ jobs.build_push.outputs.image_name }}
 jobs:
   build_push:
-    name: Docker Build ${{ github.event_name == 'pull_request' || '→ Push' }}
+    name: Build ${{ github.event_name == 'pull_request' && '' || '→ Push' }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout }}
     permissions:
@@ -89,14 +89,14 @@ jobs:
           endpoint: ${{ github.event.repository.name }}
       - name: Configure AWS credentials
         id: aws-config
-        if: github.event_name != 'pull_request' && inputs.aws_role_arn != null
+        if: ${{ github.event_name != 'pull_request' && inputs.aws_role_arn != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
           role-to-assume: ${{ inputs.aws_role_arn }}
       - name: Login to Amazon ECR
         id: aws-login
-        if: steps.aws-config.outcome == 'success'
+        if: ${{ steps.aws-config.outcome == 'success' }}
         uses: aws-actions/amazon-ecr-login@v2
       # FIXME: Remove
       - name: Debug Info
@@ -112,7 +112,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: >
-            ${{ steps.aws-login.outputs.registry == null && inputs.docker_registry ||
+            ${{ steps.aws-login.outputs.registry == '' && inputs.docker_registry ||
                 steps.aws-login.outputs.registry }}/${{ inputs.docker_repository }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
@@ -124,16 +124,16 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - name: Login to ${{ inputs.docker_registry }} container registry
-        if: github.event_name != 'pull_request' && steps.aws-config.outcome == 'skipped'
+        if: ${{ github.event_name != 'pull_request' && steps.aws-config.outcome == 'skipped' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.docker_registry }}
           username: >
             ${{ inputs.aws_access_key_id == 'true' && secrets.aws_access_key_id ||
-                (secrets.docker_username == null && github.actor || secrets.docker_username) }}
+                (secrets.docker_username == '' && github.actor || secrets.docker_username) }}
           password: >
             ${{ inputs.aws_secret_access_key == 'true' && secrets.aws_secret_access_key ||
-                (secrets.docker_password == null && github.token || secrets.docker_password) }}
+                (secrets.docker_password == '' && github.token || secrets.docker_password) }}
       - name: Build
         uses: docker/build-push-action@v5
         with:
@@ -151,7 +151,7 @@ jobs:
         with:
           image: ${{ steps.meta.outputs.tags }}
       - name: Push
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -165,7 +165,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Cleanup old packages
         uses: actions/delete-package-versions@v4
-        with: 
+        with:
           package-name: ${{ github.event.repository.name }}
           package-type: container
           min-versions-to-keep: 10

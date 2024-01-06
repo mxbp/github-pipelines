@@ -3,6 +3,9 @@ name: Quality Gates
 on:
   workflow_call:
     inputs:
+      build:
+        required: false
+        type: string
       # NOTE: SonarQube
       sonar_host_url:
         required: false
@@ -46,14 +49,11 @@ jobs:
       APPLY_FIXES_EVENT: pull_request # Decide which event triggers application of fixes in a commit or a PR (pull_request, push, all)
       APPLY_FIXES_MODE: commit # If APPLY_FIXES is used, defines if the fixes are directly committed (commit) or posted in a PR (pull_request)
     steps:
-      - name: Download source artifact
-        uses: actions/download-artifact@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          name: app-source-${{ github.run_number }}
-          path: ${{ github.workspace }}
+          fetch-depth: 0
       - uses: mxbp/github-pipelines/actions/quality-gates-linter@main
-      # FIXME: Remove
-
   sbom:
     name: Anchore SBOM
     runs-on: ${{ inputs.runs-on }}
@@ -66,31 +66,36 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     steps:
       - name: Download source artifact
+        if: ${{ inputs.build == 'true' }}
         uses: actions/download-artifact@v3
         with:
           name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
+      - name: Checkout
+        if: ${{ inputs.build == 'false' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: mxbp/github-pipelines/actions/quality-gates-anchore@main
   sonarqube:
     name: Sonarqube
     runs-on: ${{ inputs.runs-on }}
-    if: ${{ inputs.sonar_token == 'true' && inputs.sonar_host_url != null && inputs.sonar_project_key != null }}
+    if: ${{ inputs.sonar_token == 'true' && inputs.sonar_host_url != '' && inputs.sonar_project_key != '' }}
     # permissions:
     #   pull-requests: write
     timeout-minutes: ${{ inputs.timeout }}
     steps:
-      # FIXME: Remove
-      - name: Debug Info
-        run: |
-          echo "inputs.sonar_token        - ${{ inputs.sonar_token }}"
-          echo "secrets.sonar_token       - ${{ secrets.sonar_token }}"
-          echo "inputs.sonar_host_url     - ${{ inputs.sonar_host_url }}"
-          echo "inputs.sonar_project_key  - ${{ inputs.sonar_project_key }}"
       - name: Download source artifact
+        if: ${{ inputs.build == 'true' }}
         uses: actions/download-artifact@v3
         with:
           name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
+      - name: Checkout
+        if: ${{ inputs.build == 'false' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: mxbp/github-pipelines/actions/quality-gates-sonarqube@main
         with:
           sonar_host_url: ${{ inputs.sonar_host_url }}
@@ -99,7 +104,7 @@ jobs:
   codeql:
     name: CodeQL
     runs-on: ${{ inputs.runs-on }}
-    if: ${{ inputs.codeql_language != null }}
+    if: ${{ inputs.codeql_language != '' && inputs.build == 'true' }}
     permissions:
       actions: read
       contents: read
@@ -113,10 +118,16 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     steps:
       - name: Download source artifact
+        if: ${{ inputs.build == 'true' }}
         uses: actions/download-artifact@v3
         with:
           name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
+      - name: Checkout
+        if: ${{ inputs.build == 'false' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: mxbp/github-pipelines/actions/quality-gates-codeql@main
         with:
           language: ${{ matrix.language }}

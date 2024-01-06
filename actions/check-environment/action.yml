@@ -20,14 +20,13 @@ inputs:
   production_environment:
     description: Production
     required: false
-  timeout:
-    description: Timeout
-    required: false
-    default: "60"
 outputs:
   environment:
     description: Environment
     value: ${{ steps.check-environment.outputs.environment  }}
+  build:
+    description: Build
+    value: ${{ steps.check-environment.outputs.build  }}
 runs:
   using: composite
   steps:
@@ -47,60 +46,77 @@ runs:
       run: |
         #!/bin/bash
 
-        set GH_DEFAULT_BRANCH
-        set GH_CURRENT_BRANCH
-        set GH_MERGE_BRANCH
         set GH_ENVIRONMENT
-        set GH_INPUT_ENVIRONMENT
-        
+        set GH_BUILD
+
         ## Workflow triggered manually
         if [[ "$GH_INPUT_ENVIRONMENT" != "" ]]; then
           GH_ENVIRONMENT=$(echo "$GH_INPUT_ENVIRONMENT" | tr [:upper:] [:lower:])
-        
+
           # The PROD environment can use the $GH_DEFAULT_BRANCH branches
           if [[ "$GH_ENVIRONMENT" == "$GH_ENV_PROD" &&
-              "$GH_CURRENT_BRANCH" == "$GH_DEFAULT_BRANCH" ]]; then :
-        
-          # TEST and STAGE environments can use the $GH_DEFAULT_BRANCH and release/hotfix branches
-          elif [[ "$GH_ENVIRONMENT" =~ ^($GH_ENV_TST|$GH_ENV_STG)$ &&
-              "$GH_CURRENT_BRANCH" =~ ^(release|hotfix|$GH_DEFAULT_BRANCH)\/?([a-z0-9._-]*)$ ]]; then :
-        
+              "$GH_CURRENT_BRANCH" == "$GH_DEFAULT_BRANCH" ]]; then
+            GH_BUILD=false
+
+          # STAGE environments can use the $GH_DEFAULT_BRANCH and release/hotfix branches
+          elif [[ "$GH_ENVIRONMENT" =~ ^$GH_ENV_STG$ &&
+              "$GH_CURRENT_BRANCH" =~ ^(release|hotfix|$GH_DEFAULT_BRANCH)\/?([a-z0-9._-]*)$ ]]; then
+            GH_BUILD=false
+
+          # TEST environments can use the $GH_DEFAULT_BRANCH and release/hotfix branches
+          elif [[ "$GH_ENVIRONMENT" =~ ^$GH_ENV_TST$ &&
+              "$GH_CURRENT_BRANCH" =~ ^(release|hotfix|$GH_DEFAULT_BRANCH)\/?([a-z0-9._-]*)$ ]]; then
+            GH_BUILD=true
+
           # The DEVELOP environment can use the main/master, release/hotfix and develop branches
           elif [[ "$GH_ENVIRONMENT" == "$GH_ENV_DEV" &&
-              "$GH_CURRENT_BRANCH" =~ ^(develop|release|hotfix|$GH_DEFAULT_BRANCH)\/?([a-z0-9._-]*)$ ]]; then :
-        
+              "$GH_CURRENT_BRANCH" =~ ^(develop|release|hotfix|$GH_DEFAULT_BRANCH)\/?([a-z0-9._-]*)$ ]]; then
+            GH_BUILD=true
+
           # The SANDBOX environment can use all branches
-          elif [[ "$GH_ENVIRONMENT" == "$GH_ENV_SBX" ]]; then :
-        
+          elif [[ "$GH_ENVIRONMENT" == "$GH_ENV_SBX" ]]; then
+            GH_BUILD=true
+
           # Exit on invalid condition
           else
             echo "::error::Incorrect environment has been selected. Cannot use environment '$GH_INPUT_ENVIRONMENT' for branch '$GH_CURRENT_BRANCH' 👎"
-            exit 1
+            exit 126
           fi
-        
+
           GH_ENVIRONMENT=$GH_INPUT_ENVIRONMENT
-        
+
         ## Workflow triggered automatically
         # The DEVELOP environment can use the develop branch
         elif [[ "$GH_CURRENT_BRANCH" == "develop" || "$GH_MERGE_BRANCH" == "develop" ]]; then
+          GH_BUILD=true
           GH_ENVIRONMENT=$GH_ENV_DEV
         # The TEST environments can use release/hotfix branches
         elif [[ "$GH_CURRENT_BRANCH" =~ ^(release|hotfix)\/([0-9.]+)$ || "$GH_MERGE_BRANCH" =~ ^(release|hotfix)\/([0-9.]+)$ ]]; then
+          GH_BUILD=true
           GH_ENVIRONMENT=$GH_ENV_TST
         else
           echo "::error::Cannot define the environment for '$GH_CURRENT_BRANCH' branch 👎"
-          exit 1
+          exit 127
         fi
-        
-        echo "environment=$GH_ENVIRONMENT" >> "$GITHUB_OUTPUT"
-        
+
+        {
+          echo "environment=$GH_ENVIRONMENT"
+          echo "build=$GH_BUILD"
+        } >> "$GITHUB_OUTPUT"
+
         echo "::group::Debug Info"
-        echo "Branch      - $GH_CURRENT_BRANCH 👍"
-        echo "Environment - $GH_ENVIRONMENT 👍"
+        echo "Branch      - $GH_CURRENT_BRANCH"
+        echo "Environment - $GH_ENVIRONMENT"
+        echo "Build       - $GH_BUILD"
         echo "::endgroup::"
     - name: Create labels
       env:
         GH_TOKEN: ${{ github.token }}
+        GH_ENV_SBX: ${{ inputs.sandbox_environment }}
+        GH_ENV_DEV: ${{ inputs.develop_environment }}
+        GH_ENV_TST: ${{ inputs.test_environment }}
+        GH_ENV_STG: ${{ inputs.stage_environment }}
+        GH_ENV_PROD: ${{ inputs.production_environment }}
       shell: bash
       run: |
         #!/bin/bash
@@ -109,8 +125,8 @@ runs:
           [[ -n "$1" && -n "$2" ]] && gh label create $1 --description "Environment" --color "$2" --force
         }
 
-        gh_label ${{ inputs.sandbox_environment }} 2E86C1
-        gh_label ${{ inputs.develop_environment }} 229954
-        gh_label ${{ inputs.test_environment }} D4AC0D
-        gh_label ${{ inputs.stage_environment }} BA4A00
-        gh_label ${{ inputs.production_environment }} 839192
+        gh_label $GH_ENV_SBX 2E86C1
+        gh_label $GH_ENV_DEV 229954
+        gh_label $GH_ENV_TST D4AC0D
+        gh_label $GH_ENV_STG BA4A00
+        gh_label $GH_ENV_PROD 839192

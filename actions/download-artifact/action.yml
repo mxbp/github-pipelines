@@ -1,0 +1,57 @@
+---
+name: Download an artifact
+description: Download an artifact
+inputs:
+  artifact_id:
+    description: Artifact ID
+    required: true
+  app_version:
+    description: Application version
+    required: false
+  archive_name:
+    description: Archive name
+    required: false
+  archive_format:
+    description: Archive format
+    required: false
+    default: zip
+outputs:
+  artifact_name:
+    description: Artifact name
+    value: ${{ steps.download.outputs.artifact_name }}
+runs:
+  using: composite
+  steps:
+    - name: Download an artifact
+      id: download
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_RUN_NUMBER: ${{ github.run_number }}
+        GH_OWNER: ${{ github.repository_owner }}
+        GH_REPO: ${{ github.event.repository.name }}
+        GH_ARTIFACT_ID: ${{ inputs.artifact_id }}
+        GH_ARCHIVE_FORMAT: ${{ inputs.archive_format }}
+        ARCHIVE_NAME: ${{ inputs.archive_name }}
+        APP_VERSION: ${{ inputs.app_version == '' && '' || format('-{0}', inputs.app_version) }}
+      shell: bash
+      run: |
+        #!/bin/bash
+
+        if [[ "$ARCHIVE_NAME" == "" ]]; then
+          GH_ARTIFACT_NAME=$GH_REPO-${GITHUB_REF_NAME/\//-}$APP_VERSION-$GH_RUN_NUMBER
+        else
+          GH_ARTIFACT_NAME=$ARCHIVE_NAME
+        fi
+
+        echo "/repos/$GH_OWNER/$GH_REPO/actions/artifacts/$GH_ARTIFACT_ID/$GH_ARCHIVE_FORMAT > $GH_ARTIFACT_NAME.$GH_ARCHIVE_FORMAT"
+
+        gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          /repos/$GH_OWNER/$GH_REPO/actions/artifacts/$GH_ARTIFACT_ID/$GH_ARCHIVE_FORMAT > $GH_ARTIFACT_NAME.$GH_ARCHIVE_FORMAT
+
+          echo "artifact_name=$GH_ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+        echo "::group::Debug Info"
+        echo "Artifact name - $GH_ARTIFACT_NAME"
+        echo "::endgroup::"

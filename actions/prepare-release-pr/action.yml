@@ -91,6 +91,7 @@ runs:
         # Reset label status and move PR to draft if deploying to TEST environment
         if [[ "$GH_ENVIRONMENT" == "$GH_ENV_TST" && "$GH_LABEL_STG" == true ]]; then
           gh pr edit --remove-label "$GH_ENV_STG" && \
+            GH_LABEL_STG=false
             GH_PR_MESSAGE+=", label '$GH_ENV_STG' removed"
         fi
 

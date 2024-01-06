@@ -55,9 +55,8 @@ jobs:
   build:
     name: NodeJS
     runs-on: ubuntu-latest
-    if: >
-      ${{ github.event_name != 'workflow_dispatch' &&
-         (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    if: ${{ github.event_name != 'workflow_dispatch' &&
+      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
     timeout-minutes: ${{ inputs.timeout }}
     permissions:
       contents: write # required - git push
@@ -103,27 +102,27 @@ jobs:
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.node_auth_token }}
-        if: ${{ github.event_name != 'pull_request' && env.NODE_AUTH_TOKEN != null }}
+        if: ${{ github.event_name != 'pull_request' && env.NODE_AUTH_TOKEN != '' }}
         run: ${{ inputs.publish_command }}
       # - name: Upload build artifact
-      #   uses: actions/upload-artifact@v3
+      #   uses: actions/upload-artifact@v4
       #   with:
       #     name: app-build-${{ github.run_number }}
       #     path: ${{ inputs.build_dir }}
       - name: Upload source artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: app-source-${{ github.run_number }}
           path: |
             ${{ github.workspace }}
             !node_modules
       - name: Compress source
-        if: ${{ inputs.aws_s3_bucket != null }}
+        if: ${{ inputs.aws_s3_bucket != '' }}
         run: >
           tar -acvf ${{ github.workspace }}/${env.ARTIFACT_NAME}.tgz \
           ${{ inputs.build_dir }}
       - name: Configure AWS Credentials
-        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null }}
+        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
@@ -131,7 +130,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
           role-to-assume: ${{ inputs.aws_role_arn }}
       - name: Copy files to the AWS S3
-        if: github.event_name != 'pull_request' && inputs.aws_s3_bucket != null
+        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != '' }}
         run: aws s3 cp ${env.ARTIFACT_NAME}.tgz s3://${{ inputs.aws_s3_bucket }}/
   quality_gates:
     name: Quality Gates
