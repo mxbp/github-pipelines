@@ -15,7 +15,7 @@ runs:
     - name: Checking files
       id: check-file
       env:
-        GH_INPUT_FILE: ${{ hashFiles(inputs.file_path) != null }}
+        GH_INPUT_FILE: ${{ hashFiles(inputs.file_path) != '' }}
       shell: bash
       run: >
         {

@@ -1,16 +1,16 @@
 ---
 name: PR
-description: Preparing PR for Release
+description: Preparing PR
 inputs:
   environment:
     description: Environment
     required: true
-  # sandbox_environment:
-  #   description: Sandbox
-  #   required: false
-  # develop_environment:
-  #   description: Develop
-  #   required: false
+  sandbox_environment:
+    description: Sandbox
+    required: false
+  develop_environment:
+    description: Develop
+    required: false
   test_environment:
     description: Test
     required: true
@@ -38,10 +38,11 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         GH_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        GH_CURRENT_BRANCH: ${{ github.ref_name }}
         GH_DEPLOY_STATUS: ${{ inputs.deploy_status }}
         GH_ENVIRONMENT: ${{ inputs.environment }}
-        # GH_ENV_SBX: ${{ inputs.sandbox_environment }}
-        # GH_ENV_DEV: ${{ inputs.develop_environment }}
+        GH_ENV_SBX: ${{ inputs.sandbox_environment }}
+        GH_ENV_DEV: ${{ inputs.develop_environment }}
         GH_ENV_TST: ${{ inputs.test_environment }}
         GH_ENV_STG: ${{ inputs.stage_environment }}
         # GH_ENV_PROD: ${{ inputs.production_environment }}
@@ -57,12 +58,16 @@ runs:
         set GH_PR_STATUS
 
         # Create or edit a pull request
-        gh pr create --draft --fill \
-          --base "$GH_DEFAULT_BRANCH" \
-          --title "Release v${GITHUB_REF_NAME##*/}" && GH_PR_MESSAGE="PR was created and marked as a draft" || \
-          gh pr edit \
-            --base "$GH_DEFAULT_BRANCH" \
-            --title "Release v${GITHUB_REF_NAME##*/}" && GH_PR_MESSAGE="PR was updated"
+        if [[ "$GH_CURRENT_BRANCH" =~ ^(release|hotfix)\/?([a-z0-9._-]*)$ ]]; then
+          gh pr create --draft --fill --base "$GH_DEFAULT_BRANCH" --title "Release v${GITHUB_REF_NAME##*/}" && \
+            GH_PR_MESSAGE="PR was created and marked as a draft" || \
+            gh pr edit --base "$GH_DEFAULT_BRANCH" --title "Release v${GITHUB_REF_NAME##*/}" && \
+              GH_PR_MESSAGE="PR was updated"
+        else
+          gh pr create --draft --fill --base "develop" && \
+            GH_PR_MESSAGE="PR was created and marked as a draft" || \
+            gh pr edit --base "develop" && GH_PR_MESSAGE="PR was updated"
+        fi
 
         # Get deployment outcome. Change PR status to draft if deployment fails
         if [[ $GH_DEPLOY_STATUS == "success" ]]; then
@@ -78,11 +83,15 @@ runs:
           GH_PR_MESSAGE+=", label '$GH_ENVIRONMENT' $GH_PR_ACTION_MESSAGE"
 
         # Get specific labels
+        GH_LABEL_SBX=false
+        GH_LABEL_DEV=false
         GH_LABEL_TST=false
         GH_LABEL_STG=false
 
         while IFS= read -r GH_LABEL; do
           case $GH_LABEL in
+            "$GH_ENV_SBX") GH_LABEL_SBX=true ;;
+            "$GH_ENV_DEV") GH_LABEL_DEV=true ;;
             "$GH_ENV_TST") GH_LABEL_TST=true ;;
             "$GH_ENV_STG") GH_LABEL_STG=true ;;
           esac
@@ -91,11 +100,14 @@ runs:
         # Reset label status and move PR to draft if deploying to TEST environment
         if [[ "$GH_ENVIRONMENT" == "$GH_ENV_TST" && "$GH_LABEL_STG" == true ]]; then
           gh pr edit --remove-label "$GH_ENV_STG" && \
+            GH_LABEL_STG=false
             GH_PR_MESSAGE+=", label '$GH_ENV_STG' removed"
         fi
 
         # Check for specific labels and update PR status
-        if $GH_LABEL_TST && $GH_LABEL_STG; then
+        if [[ "$GH_ENVIRONMENT" == "$GH_ENV_STG" && $GH_LABEL_TST && $GH_LABEL_STG ]]; then
+          gh pr ready && GH_PR_STATUS="Pull request has been updated, marked as 'ready for review' 👍"
+        elif [[ "$GH_ENVIRONMENT" == "$GH_ENV_SBX" && $GH_DEPLOY_STATUS == "success" ]]; then
           gh pr ready && GH_PR_STATUS="Pull request has been updated, marked as 'ready for review' 👍"
         else
           gh pr ready --undo
@@ -109,6 +121,8 @@ runs:
         fi
 
         echo "::group::Debug Info"
+        echo "GH_LABEL_SBX - $GH_LABEL_SBX"
+        echo "GH_LABEL_DEV - $GH_LABEL_DEV"
         echo "GH_LABEL_TST - $GH_LABEL_TST"
         echo "GH_LABEL_STG - $GH_LABEL_STG"
         echo "$GH_PR_MESSAGE"

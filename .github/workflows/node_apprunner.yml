@@ -94,7 +94,7 @@ on:
       production_environment:
         required: false
         type: string
-        default: production
+        default: production # FIXME: Actualize the name of the environment with your workflow
       # NOTE: OWASP ZAP
       zap_rules_file_name:
         required: false
@@ -129,6 +129,7 @@ jobs:
     environment: ${{ inputs.environment }}
     outputs:
       environment: ${{ steps.check-environment.outputs.environment }}
+      build: ${{ steps.check-environment.outputs.build }}
       sonar_token: ${{ steps.check-secrets.outputs.sonar_token }}
       aws_access_key_id: ${{ steps.check-secrets.outputs.aws_access_key_id }}
       aws_secret_access_key: ${{ steps.check-secrets.outputs.aws_secret_access_key }}
@@ -166,17 +167,14 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     needs:
       - prepare
-    # workflow_dispatch && !release && !main
-    if: ${{ (github.event_name == 'workflow_dispatch' &&
-      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
-       github.ref_name != github.event.repository.default_branch)) ||
-       github.event_name == 'push' || github.event_name == 'pull_request' }}
+    if: ${{ needs.prepare.outputs.build == 'true' }}
     permissions:
-      contents: read
+      contents: write # FIXME: read
       pull-requests: write
+      packages: write
     # FIXME: incorrect ARTIFACT_NAME
-    env:
-      ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.node_version }}-${{ github.run_number }}
+    # env:
+    #   ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.node_version }}-${{ github.run_number }}
     steps:
       - name: Debug Info
         run: |
@@ -187,6 +185,7 @@ jobs:
           echo "needs.prepare.outputs.aws_access_key_id     - ${{ needs.prepare.outputs.aws_access_key_id }}"
           echo "needs.prepare.outputs.aws_secret_access_key - ${{ needs.prepare.outputs.aws_secret_access_key }}"
           echo "inputs.docker_registry                      - ${{ inputs.docker_registry }}"
+          echo "github.ref_name                             - ${{ github.ref_name }}"
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -216,6 +215,7 @@ jobs:
         if: ${{ startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/') }}
         run: |
           #!/bin/bash
+
           # TODO: Add workspace env for ./package.json
           GH_APP_VERSION=$(node -p "require('./package.json').version")
 
@@ -230,32 +230,31 @@ jobs:
       - name: Publish
         # README: NODE_AUTH_TOKEN
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.node_auth_token != null && secrets.node_auth_token || github.token }}
-        if: ${{ github.event_name != 'pull_request' && inputs.publish_command != null }}
+          NODE_AUTH_TOKEN: ${{ secrets.node_auth_token != '' && secrets.node_auth_token || github.token }}
+        if: ${{ github.event_name != 'pull_request' && inputs.publish_command != '' }}
         run: ${{ inputs.publish_command }}
-      # - name: Upload build artifact
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: app-build-${{ github.run_number }}
-      #     path: ${{ inputs.build_dir }}
       - name: Upload source artifact
-        uses: actions/upload-artifact@v3
+        id: upload
+        uses: actions/upload-artifact@v4
         with:
           name: app-source-${{ github.run_number }}
           path: |
             ${{ github.workspace }}
             !node_modules
-      # TODO: Add download ZIP artifact
-      - name: Compress source
-        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
-          (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
-        run: >
-          tar -acvf ${{ github.workspace }}/${env.ARTIFACT_NAME}.tgz \
-          ${{ inputs.build_dir }}
+      - name: Download an artifact
+        if:
+          ${{ github.event_name != 'pull_request' && needs.prepare.outputs.dockerfile != 'true' &&
+          inputs.aws_s3_bucket != '' && (inputs.aws_role_arn != '' ||
+          (needs.prepare.outputs.aws_access_key_id == 'true' &&
+          needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+        id: download
+        uses: mxbp/github-pipelines/actions/artifact-download@main
+        with:
+          artifact_id: ${{ steps.upload.outputs.artifact-id }}
+          app_version: ${{ inputs.node_version }}
       - name: Configure AWS Credentials
         id: aws-config
-        if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
-          (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+        if: ${{ steps.download.outcome == 'success' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
@@ -263,22 +262,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
           role-to-assume: ${{ inputs.aws_role_arn }}
       - name: Copy files to the AWS S3
-        if: ${{ github.event_name != 'pull_request' && steps.aws-config.outcome == 'success' }}
+        if: ${{ steps.aws-config.outcome == 'success' }}
         run: aws s3 cp ${env.ARTIFACT_NAME}.tgz s3://${{ inputs.aws_s3_bucket }}/
   quality_gates:
     name: Quality Gates
     needs:
       - prepare
       - build
-    # !failure() && !cancelled() &&
-    if: ${{ (github.event_name == 'workflow_dispatch' &&
-      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
-       github.ref_name != github.event.repository.default_branch)) ||
-       github.event_name == 'push' || github.event_name == 'pull_request' }}
+    if: ${{ success() || github.ref_name == github.event.repository.default_branch }}
     uses: mxbp/github-pipelines/.github/workflows/quality_gates.yml@main
     with:
       runs-on: ${{ inputs.runs-on }}
       timeout: ${{ inputs.timeout }}
+      build: ${{ needs.prepare.outputs.build }}
       sonar_token: ${{ needs.prepare.outputs.sonar_token }}
       sonar_host_url: ${{ inputs.sonar_host_url }}
       sonar_project_key: ${{ inputs.sonar_project_key }}
@@ -290,10 +286,7 @@ jobs:
       - prepare
       - build
       - quality_gates
-    if: ${{ needs.prepare.outputs.dockerfile == 'true' || (github.event_name == 'workflow_dispatch' &&
-      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
-       github.ref_name != github.event.repository.default_branch)) ||
-       github.event_name == 'push' || github.event_name == 'pull_request' }}
+    if: ${{ needs.prepare.outputs.dockerfile == 'true' && needs.prepare.outputs.build == 'true' }}
     uses: mxbp/github-pipelines/.github/workflows/docker.yml@main
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -310,36 +303,21 @@ jobs:
     name: Deploy
     needs:
       - prepare
-      # - build
-      # - quality_gates
+      - build
       - docker
-    # runs-on: ${{ inputs.runs-on }}
-    # environment: ${{ needs.prepare.outputs.environment }}
-    # timeout-minutes: ${{ inputs.timeout }}
-    if: ${{ !failure() && !cancelled() }}
-    # steps:
+    if: ${{ success() }}
     uses: mxbp/github-pipelines/.github/workflows/deploy_aws_apprunner.yml@main
     with:
       runs-on: ${{ inputs.runs-on }}
       timeout: ${{ inputs.timeout }}
       docker_image_name: ${{ needs.docker.outputs.image_name }}
       environment: ${{ needs.prepare.outputs.environment }}
+      sandbox_environment: ${{ inputs.sandbox_environment }}
+      develop_environment: ${{ inputs.develop_environment }}
       test_environment: ${{ inputs.test_environment }}
       stage_environment: ${{ inputs.stage_environment }}
+      production_environment: ${{ inputs.production_environment }}
       aws_access_key_id: ${{ needs.prepare.outputs.aws_access_key_id }}
       aws_secret_access_key: ${{ needs.prepare.outputs.aws_secret_access_key }}
       aws_role_arn: ${{ inputs.aws_role_arn }}
     secrets: inherit
-  dast:
-    name: DAST
-    needs:
-      - deploy
-    if: ${{ needs.deploy.outputs.web_app_url != null }}
-    permissions:
-      issues: write
-    uses: mxbp/github-pipelines/.github/workflows/dast.yml@main
-    with:
-      runs-on: ${{ inputs.runs-on }}
-      timeout: ${{ inputs.timeout }}
-      target_url: ${{ needs.deploy.outputs.web_app_url }}
-      zap_rules_file_name: ${{ inputs.zap_rules_file_name }}

@@ -13,10 +13,19 @@ on:
       environment:
         required: false
         type: string
+      sandbox_environment:
+        required: false
+        type: string
+      develop_environment:
+        required: false
+        type: string
       test_environment:
         required: false
         type: string
       stage_environment:
+        required: false
+        type: string
+      production_environment:
         required: false
         type: string
       # NOTE: App Runner
@@ -92,18 +101,23 @@ jobs:
           echo "inputs.aws_access_key_id: ${{ inputs.aws_access_key_id }}"
           echo "inputs.aws_secret_access_key: ${{ inputs.aws_secret_access_key }}"
           echo "inputs.aws_role_arn: ${{ inputs.aws_role_arn }}"
+      - name: Checkout
+        if: ${{ inputs.zap_rules_file_name != '' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Configure AWS credentials
         id: aws-config
-        if: ${{ inputs.aws_role_arn != null || (inputs.aws_access_key_id == 'true' && inputs.aws_secret_access_key == 'true') }}
+        if: ${{ inputs.aws_role_arn != '' || (inputs.aws_access_key_id == 'true' && inputs.aws_secret_access_key == 'true') }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
-          aws-access-key-id: ${{ inputs.aws_access_key_id == 'true' && secrets.aws_access_key_id || null }}
-          aws-secret-access-key: ${{ inputs.aws_secret_access_key == 'true' &&  secrets.aws_secret_access_key || null }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id == 'true' && secrets.aws_access_key_id || '' }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key == 'true' && secrets.aws_secret_access_key || '' }}
           role-to-assume: ${{ inputs.aws_role_arn }}
       - name: Deploy to App Runner
         id: deploy-aws-apprunner
-        if: steps.aws-config.outcome == 'success'
+        if: ${{ steps.aws-config.outcome == 'success' }}
         uses: awslabs/amazon-app-runner-deploy@v2.5.2
         with:
           service: ${{ github.event.repository.name }}
@@ -126,22 +140,20 @@ jobs:
       - name: Test deploy
         id: deploy
         run: echo "Test deploy"
-      - name: Preparing PR for Release
-        if: ${{ always() && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
-        uses: mxbp/github-pipelines/actions/prepare-release-pr@main
+      - name: Create/update PR
+        if: ${{ always() }}
+        # && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+        uses: mxbp/github-pipelines/actions/pr-prepare@main
         with:
           environment: ${{ inputs.environment }}
           deploy_status: ${{ steps.deploy.outcome }}
+          sandbox_environment: ${{ inputs.sandbox_environment }}
+          develop_environment: ${{ inputs.develop_environment }}
           test_environment: ${{ inputs.test_environment }}
           stage_environment: ${{ inputs.stage_environment }}
-  # dast:
-  #   name: DAST
-  #   needs: deploy
-  #   if: needs.deploy.outputs.web_app_url != null
-  #   permissions:
-  #     issues: write
-  #   uses: mxbp/github-pipelines/.github/workflows/dast.yml@main
-  #   with:
-  #     target_url: ${{ needs.deploy.outputs.web_app_url }}
-  #     zap_rules_file_name: ${{ inputs.zap_rules_file_name }}
-
+          # production_environment: ${{ inputs.production_environment }}
+      - name: DAST OWASP ZAP
+        if: ${{ steps.deploy-aws-apprunner.outputs.web_app_url != '' }}
+        uses: mxbp/github-pipelines/actions/dast-owasp-zap@main
+        with:
+          target_url: ${{ steps.deploy-aws-apprunner.outputs.web_app_url }}

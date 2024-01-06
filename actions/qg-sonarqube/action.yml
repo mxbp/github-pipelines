@@ -3,7 +3,7 @@ name: SonarQube
 description: |
   Sonar’s static application security testing (SAST) engine detects security vulnerabilities in your code so they can
   be eliminated before you build and test your application. Achieve robust application security and compliance for
-  complex projects with SAST. 
+  complex projects with SAST.
 inputs:
   sonar_host_url:
     description: SonarQube Host
