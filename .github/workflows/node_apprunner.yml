@@ -166,10 +166,14 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     needs:
       - prepare
-    if: ${{ github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
-      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    # workflow_dispatch && !release && !main
+    if: ${{ (github.event_name == 'workflow_dispatch' &&
+      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
+       github.ref_name != github.event.repository.default_branch)) ||
+       github.event_name == 'push' || github.event_name == 'pull_request' }}
     permissions:
-      contents: write
+      contents: read
+      pull-requests: write
     # FIXME: incorrect ARTIFACT_NAME
     env:
       ARTIFACT_NAME: ${{ github.event.repository.name }}-${GITHUB_HEAD_REF/\//-}-${{ inputs.node_version }}-${{ github.run_number }}
@@ -189,7 +193,11 @@ jobs:
           fetch-depth: 0
       - name: Dependency Review
         if: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
         uses: actions/dependency-review-action@v3
+        with:
+          comment-summary-in-pr: always
+          license-check: false
         # with:
         #   fail-on-severity: medium
       - name: Setup Node ${{ inputs.node_version }}
@@ -240,14 +248,14 @@ jobs:
       # TODO: Add download ZIP artifact
       - name: Compress source
         if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
-             (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+          (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
         run: >
           tar -acvf ${{ github.workspace }}/${env.ARTIFACT_NAME}.tgz \
           ${{ inputs.build_dir }}
       - name: Configure AWS Credentials
         id: aws-config
         if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != null && (inputs.aws_role_arn != null ||
-             (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
+          (needs.prepare.outputs.aws_access_key_id == 'true' && needs.prepare.outputs.aws_secret_access_key == 'true')) }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
@@ -262,9 +270,11 @@ jobs:
     needs:
       - prepare
       - build
-    if: ${{ !failure() && !cancelled() &&
-      github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
-      (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    # !failure() && !cancelled() &&
+    if: ${{ (github.event_name == 'workflow_dispatch' &&
+      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
+       github.ref_name != github.event.repository.default_branch)) ||
+       github.event_name == 'push' || github.event_name == 'pull_request' }}
     uses: mxbp/github-pipelines/.github/workflows/quality_gates.yml@main
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -280,8 +290,10 @@ jobs:
       - prepare
       - build
       - quality_gates
-    if: ${{ github.event_name != 'workflow_dispatch' && needs.prepare.outputs.dockerfile == 'true' &&
-         (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
+    if: ${{ needs.prepare.outputs.dockerfile == 'true' || (github.event_name == 'workflow_dispatch' &&
+      (!startsWith(github.ref_name, 'release/') || !startsWith(github.ref_name, 'hotfix/') ||
+       github.ref_name != github.event.repository.default_branch)) ||
+       github.event_name == 'push' || github.event_name == 'pull_request' }}
     uses: mxbp/github-pipelines/.github/workflows/docker.yml@main
     with:
       runs-on: ${{ inputs.runs-on }}

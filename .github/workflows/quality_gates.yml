@@ -33,11 +33,11 @@ jobs:
   linter:
     name: MegaLinter
     runs-on: ${{ inputs.runs-on }}
-    continue-on-error: true
     permissions:
       contents: write
       issues: write
       pull-requests: write
+    continue-on-error: true
     timeout-minutes: ${{ inputs.timeout }}
     # FIXME: Remove
     env: # Comment env block if you don't want to apply fixes
@@ -53,7 +53,7 @@ jobs:
           path: ${{ github.workspace }}
       - uses: mxbp/github-pipelines/actions/quality-gates-linter@main
       # FIXME: Remove
-      
+
   sbom:
     name: Anchore SBOM
     runs-on: ${{ inputs.runs-on }}

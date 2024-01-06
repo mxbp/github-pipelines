@@ -127,7 +127,7 @@ jobs:
         id: deploy
         run: echo "Test deploy"
       - name: Preparing PR for Release
-        if: ${{ always() }}
+        if: ${{ always() && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
         uses: mxbp/github-pipelines/actions/prepare-release-pr@main
         with:
           environment: ${{ inputs.environment }}
