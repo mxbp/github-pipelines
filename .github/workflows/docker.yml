@@ -75,7 +75,7 @@ jobs:
       image_name: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Download source artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: app-source-${{ github.run_number }}
           path: ${{ github.workspace }}
