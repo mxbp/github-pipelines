@@ -1,0 +1,54 @@
+---
+name: Checking secrets
+description: Checking secrets
+inputs:
+  environment:
+    description: Environment
+    required: true
+  # sonar_token:
+  #   description: SonarQube Token
+  #   required: false
+  # aws_access_key_id:
+  #   description: AWS Access Key ID
+  #   required: false
+  # aws_secret_access_key:
+  #   description: AWS Secret Access Key
+  #   required: false
+  gh_token:
+    description: PAT
+    required: true
+outputs:
+  secrets:
+    description: outputs
+    value: ${{ toJson(steps.check-secrets.outputs) }}
+runs:
+  using: composite
+  steps:
+    - name: Checking Secrets
+      id: check-secrets
+      env:
+        GH_TOKEN: ${{ inputs.gh_token }} # README: https://github.com/settings/tokens/new > REPO and ADMIN:ORG
+        GH_ENVIRONMENT: ${{ inputs.environment }}
+        GH_OWNER: ${{ github.repository_owner }}
+        GH_REPO: ${{ github.event.repository.name }}
+        GH_REPOSITORY_ID: ${{ github.repository_id }}
+      shell: bash
+      run: |
+        #!/bin/bash
+
+        # Create secrets in $GITHUB_OUTPUT
+        gh-secret () {
+          while read GH_SECRET; do
+            echo "$GH_SECRET=true" >> "$GITHUB_OUTPUT"
+          done < <(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" $1 \
+            --jq '.secrets[].name' 2>/dev/null)
+        }
+
+        # List organization secrets
+        gh-secret /orgs/$GH_OWNER/actions/secrets
+        # List repository secrets
+        gh-secret /repos/$GH_OWNER/$GH_REPO/actions/secrets
+        # List environment secrets
+        gh-secret /repositories/$GH_REPOSITORY_ID/environments/$GH_ENVIRONMENT/secrets

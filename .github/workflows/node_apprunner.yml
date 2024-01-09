@@ -141,7 +141,7 @@ jobs:
           fetch-depth: 0
       - name: Checking Environment
         id: check-environment
-        uses: mxbp/github-pipelines/actions/check-environment@main
+        uses: mxbp/github-pipelines/.github/actions/check-environment@main
         with:
           environment: ${{ inputs.environment == '' && '' || inputs.environment }}
           sandbox_environment: ${{ inputs.sandbox_environment }}
@@ -151,16 +151,29 @@ jobs:
           production_environment: ${{ inputs.production_environment }}
       - name: Checking Secrets
         id: check-secrets
-        uses: mxbp/github-pipelines/actions/check-secrets@main
+        uses: mxbp/github-pipelines/.github/actions/check-secrets@main
         with:
-          sonar_token: ${{ secrets.sonar_token }}
-          aws_access_key_id: ${{ secrets.aws_access_key_id }}
-          aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
+          gh_token: ${{ secrets.PAT || github.token }} # README: https://github.com/settings/tokens/new > REPO and ADMIN:ORG
+          environment: ${{ steps.check-environment.outputs.environment }}
+        #   sonar_token: ${{ secrets.sonar_token }}
+        #   aws_access_key_id: ${{ secrets.aws_access_key_id }}
+        #   aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
       - name: Checking Dockerfile
         id: check-dockerfile
-        uses: mxbp/github-pipelines/actions/check-file@main
+        uses: mxbp/github-pipelines/.github/actions/check-file@main
         with:
           file_path: ${{ inputs.dockerfile_path }}/${{ inputs.dockerfile_name }}
+      - name: Debug Info Secrets
+        env:
+          OUTPUTS_STAGE: ${{ fromJson(steps.check-secrets.outputs.secrets).STAGE }}
+          OUTPUTS_TEST: ${{ fromJson(steps.check-secrets.outputs.secrets).TEST }}
+          OUTPUTS_PAT: ${{ fromJson(steps.check-secrets.outputs.secrets).pat }}
+          OUTPUTS_FAKE: ${{ fromJson(steps.check-secrets.outputs.secrets).fake }}
+        run: |
+          echo "OUTPUTS_STAGE - $OUTPUTS_STAGE"
+          echo "OUTPUTS_TEST  - $OUTPUTS_TEST"
+          echo "OUTPUTS_PAT   - $OUTPUTS_PAT"
+          echo "OUTPUTS_FAKE  - $OUTPUTS_FAKE"
   build:
     name: Build
     runs-on: ${{ inputs.runs-on }}
@@ -248,7 +261,7 @@ jobs:
           (needs.prepare.outputs.aws_access_key_id == 'true' &&
           needs.prepare.outputs.aws_secret_access_key == 'true')) }}
         id: download
-        uses: mxbp/github-pipelines/actions/artifact-download@main
+        uses: mxbp/github-pipelines/.github/actions/artifact-download@main
         with:
           artifact_id: ${{ steps.upload.outputs.artifact-id }}
           app_version: ${{ inputs.node_version }}

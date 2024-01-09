@@ -147,7 +147,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Anchore scan
-        uses: mxbp/github-pipelines/actions/qg-anchore@main
+        uses: mxbp/github-pipelines/.github/actions/qg-anchore@main
         with:
           image: ${{ steps.meta.outputs.tags }}
       - name: Push

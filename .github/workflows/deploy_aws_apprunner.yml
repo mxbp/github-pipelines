@@ -143,7 +143,7 @@ jobs:
       - name: Create/update PR
         if: ${{ always() }}
         # && (startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/')) }}
-        uses: mxbp/github-pipelines/actions/pr-prepare@main
+        uses: mxbp/github-pipelines/.github/actions/pr-prepare@main
         with:
           environment: ${{ inputs.environment }}
           deploy_status: ${{ steps.deploy.outcome }}
@@ -154,6 +154,6 @@ jobs:
           # production_environment: ${{ inputs.production_environment }}
       - name: DAST OWASP ZAP
         if: ${{ steps.deploy-aws-apprunner.outputs.web_app_url != '' }}
-        uses: mxbp/github-pipelines/actions/dast-owasp-zap@main
+        uses: mxbp/github-pipelines/.github/actions/dast-owasp-zap@main
         with:
           target_url: ${{ steps.deploy-aws-apprunner.outputs.web_app_url }}
