@@ -103,7 +103,7 @@ jobs:
           echo "inputs.aws_role_arn: ${{ inputs.aws_role_arn }}"
       - name: Checkout
         if: ${{ inputs.zap_rules_file_name != '' }}
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Configure AWS credentials
