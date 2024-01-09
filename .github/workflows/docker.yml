@@ -109,7 +109,7 @@ jobs:
           echo "github.repository                 - ${{ github.repository }}"
       - name: Get docker meta
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: >
             ${{ steps.aws-login.outputs.registry == '' && inputs.docker_registry ||
