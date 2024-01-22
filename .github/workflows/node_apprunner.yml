@@ -206,7 +206,7 @@ jobs:
       - name: Dependency Review
         if: ${{ github.event_name == 'pull_request' }}
         continue-on-error: true
-        uses: actions/dependency-review-action@v3
+        uses: actions/dependency-review-action@v4
         with:
           comment-summary-in-pr: always
           license-check: false
