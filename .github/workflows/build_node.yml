@@ -69,7 +69,7 @@ jobs:
           fetch-depth: 0
       - name: Dependency Review
         if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/dependency-review-action@v3
+        uses: actions/dependency-review-action@v4
         # with:
         #   fail-on-severity: medium
       - name: Setup Node ${{ inputs.version }}
