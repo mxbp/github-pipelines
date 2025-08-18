@@ -136,7 +136,7 @@ jobs:
       dockerfile: ${{ steps.check-dockerfile.outputs.status }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Checking Environment
@@ -200,7 +200,7 @@ jobs:
           echo "inputs.docker_registry                      - ${{ inputs.docker_registry }}"
           echo "github.ref_name                             - ${{ github.ref_name }}"
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Dependency Review

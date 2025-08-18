@@ -50,7 +50,7 @@ jobs:
       APPLY_FIXES_MODE: commit # If APPLY_FIXES is used, defines if the fixes are directly committed (commit) or posted in a PR (pull_request)
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: mxbp/github-pipelines/.github/actions/qg-linter@main
@@ -73,7 +73,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Checkout
         if: ${{ inputs.build == 'false' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: mxbp/github-pipelines/.github/actions/qg-anchore@main
@@ -93,7 +93,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Checkout
         if: ${{ inputs.build == 'false' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: mxbp/github-pipelines/.github/actions/qg-sonarqube@main
@@ -125,7 +125,7 @@ jobs:
           path: ${{ github.workspace }}
       - name: Checkout
         if: ${{ inputs.build == 'false' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: mxbp/github-pipelines/.github/actions/qg-codeql@main
