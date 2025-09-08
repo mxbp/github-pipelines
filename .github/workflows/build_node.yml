@@ -123,7 +123,7 @@ jobs:
           ${{ inputs.build_dir }}
       - name: Configure AWS Credentials
         if: ${{ github.event_name != 'pull_request' && inputs.aws_s3_bucket != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ inputs.aws_region }}
           aws-access-key-id: ${{ secrets.aws_access_key_id }}

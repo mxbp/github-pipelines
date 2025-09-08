@@ -90,7 +90,7 @@ jobs:
       - name: Configure AWS credentials
         id: aws-config
         if: ${{ github.event_name != 'pull_request' && inputs.aws_role_arn != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ inputs.aws_region }}
           role-to-assume: ${{ inputs.aws_role_arn }}
