@@ -213,7 +213,7 @@ jobs:
         # with:
         #   fail-on-severity: medium
       - name: Setup Node ${{ inputs.node_version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node_version }}
           cache: ${{ contains(inputs.install_command, 'yarn') && 'yarn' || 'npm' }}
