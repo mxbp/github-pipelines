@@ -105,12 +105,12 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && env.NODE_AUTH_TOKEN != '' }}
         run: ${{ inputs.publish_command }}
       # - name: Upload build artifact
-      #   uses: actions/upload-artifact@v4
+      #   uses: actions/upload-artifact@v5
       #   with:
       #     name: app-build-${{ github.run_number }}
       #     path: ${{ inputs.build_dir }}
       - name: Upload source artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-source-${{ github.run_number }}
           path: |
