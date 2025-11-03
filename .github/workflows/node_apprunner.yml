@@ -248,7 +248,7 @@ jobs:
         run: ${{ inputs.publish_command }}
       - name: Upload source artifact
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-source-${{ github.run_number }}
           path: |
